@@ -1,0 +1,53 @@
+BEGIN;
+BEGIN
+EXPLAIN (ANALYZE, BUFFERS)
+select
+	o_orderpriority,
+	count(*) as order_count
+from
+	orders
+where
+	o_orderdate >= date '1993-08-01'
+	and o_orderdate < cast(date '1993-08-01' + interval '3 month' as date)
+	and exists (
+		select
+			*
+		from
+			lineitem
+		where
+			l_orderkey = o_orderkey
+			and l_commitdate < l_receiptdate
+	)
+group by
+	o_orderpriority
+order by
+	o_orderpriority;
+                                                                                         QUERY PLAN                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=1294750.82..1294750.82 rows=1 width=16) (actual time=77159.808..77159.810 rows=5 loops=1)
+   Sort Key: orders.o_orderpriority
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=654561 read=873490 dirtied=891 written=160
+   ->  HashAggregate  (cost=1294750.80..1294750.81 rows=1 width=16) (actual time=77159.664..77159.666 rows=5 loops=1)
+         Buffers: shared hit=654556 read=873490 dirtied=891 written=160
+         ->  Hash Join  (cost=1024543.26..1293990.33 rows=152094 width=16) (actual time=65594.525..76946.498 rows=526372 loops=1)
+               Hash Cond: (orders.o_orderkey = lineitem.l_orderkey)
+               Buffers: shared hit=654556 read=873490 dirtied=891 written=160
+               ->  Bitmap Heap Scan on orders  (cost=12450.91..276363.86 rows=574530 width=20) (actual time=541.891..2091.531 rows=574386 loops=1)
+                     Recheck Cond: ((o_orderdate >= '1993-08-01'::date) AND (o_orderdate < '1993-11-01'::date))
+                     Buffers: shared hit=221871 read=9503 dirtied=5 written=72
+                     ->  Bitmap Index Scan on orders_o_orderdate_o_orderkey_idx  (cost=0.00..12307.28 rows=574530 width=0) (actual time=407.164..407.164 rows=578247 loops=1)
+                           Index Cond: ((o_orderdate >= '1993-08-01'::date) AND (o_orderdate < '1993-11-01'::date))
+                           Buffers: shared hit=78 read=1567
+               ->  Hash  (cost=995414.46..995414.46 rows=1334231 width=4) (actual time=65050.008..65050.008 rows=13767175 loops=1)
+                     Buckets: 262144  Batches: 1  Memory Usage: 484003kB
+                     Buffers: shared hit=432685 read=863987 dirtied=886 written=88
+                     ->  HashAggregate  (cost=982072.15..995414.46 rows=1334231 width=4) (actual time=52608.254..61527.080 rows=13767175 loops=1)
+                           Buffers: shared hit=432685 read=863987 dirtied=886 written=88
+                           ->  Index Scan using lineitem_l_orderkey_idx_part1 on lineitem  (cost=0.00..931684.69 rows=20154984 width=4) (actual time=0.238..22667.496 rows=37965693 loops=1)
+                                 Buffers: shared hit=432685 read=863987 dirtied=886 written=88
+ Total runtime: 77449.699 ms
+(23 rows)
+
+COMMIT;
+COMMIT

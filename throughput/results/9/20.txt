@@ -1,0 +1,83 @@
+BEGIN;
+BEGIN
+EXPLAIN (ANALYZE, BUFFERS)
+select
+	s_name,
+	s_address
+from
+	supplier,
+	nation
+where
+	s_suppkey in (
+		select
+			distinct (ps_suppkey)
+		from
+			partsupp,
+			part
+		where
+			ps_partkey=p_partkey
+			and p_name like 'cornflower%'
+			and ps_availqty > (
+				select
+					0.5 * sum(l_quantity)
+				from
+					lineitem
+				where
+					l_partkey = ps_partkey
+					and l_suppkey = ps_suppkey
+					and l_shipdate >= '1995-01-01'
+					and l_shipdate < cast(date '1995-01-01' + interval '1 year' as date)
+			)
+	)
+	and s_nationkey = n_nationkey
+	and n_name = 'BRAZIL'
+order by
+	s_name;
+                                                                                                  QUERY PLAN                                                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=12740183.38..12740186.31 rows=1174 width=51) (actual time=12120.490..12120.620 rows=1786 loops=1)
+   Sort Key: supplier.s_name
+   Sort Method: quicksort  Memory: 258kB
+   Buffers: shared hit=2753550 read=355090 dirtied=776 written=49
+   ->  Nested Loop  (cost=12735713.87..12740123.52 rows=1174 width=51) (actual time=11990.077..12109.939 rows=1786 loops=1)
+         Join Filter: (supplier.s_nationkey = nation.n_nationkey)
+         Rows Removed by Join Filter: 42841
+         Buffers: shared hit=2753545 read=355090 dirtied=776 written=49
+         ->  Seq Scan on nation  (cost=0.00..1.31 rows=1 width=4) (actual time=0.012..0.023 rows=1 loops=1)
+               Filter: (n_name = 'BRAZIL'::bpchar)
+               Rows Removed by Filter: 24
+               Buffers: shared hit=1
+         ->  Hash Semi Join  (cost=12735713.87..12739755.20 rows=29361 width=55) (actual time=11989.907..12105.030 rows=44627 loops=1)
+               Hash Cond: (supplier.s_suppkey = partsupp.ps_suppkey)
+               Buffers: shared hit=2753544 read=355090 dirtied=776 written=49
+               ->  Seq Scan on supplier  (cost=0.00..3179.00 rows=100000 width=59) (actual time=0.014..36.397 rows=100000 loops=1)
+                     Buffers: shared hit=3 read=2176
+               ->  Hash  (cost=12735346.86..12735346.86 rows=29361 width=4) (actual time=11989.851..11989.851 rows=44627 loops=1)
+                     Buckets: 4096  Batches: 1  Memory Usage: 1569kB
+                     Buffers: shared hit=2753541 read=352914 dirtied=776 written=49
+                     ->  HashAggregate  (cost=12734759.64..12735053.25 rows=29361 width=4) (actual time=11957.363..11979.757 rows=44627 loops=1)
+                           Buffers: shared hit=2753541 read=352914 dirtied=776 written=49
+                           ->  Nested Loop  (cost=0.00..12734686.23 rows=29361 width=4) (actual time=0.927..11855.962 rows=59287 loops=1)
+                                 Buffers: shared hit=2753541 read=352914 dirtied=776 written=49
+                                 ->  Seq Scan on part  (cost=0.00..65522.00 rows=22021 width=4) (actual time=0.011..1088.362 rows=21761 loops=1)
+                                       Filter: ((p_name)::text ~~ 'cornflower%'::text)
+                                       Rows Removed by Filter: 1978239
+                                       Buffers: shared hit=39 read=40483 written=4
+                                 ->  Index Scan using pk_partsupp on partsupp  (cost=0.00..575.31 rows=1 width=8) (actual time=0.393..0.492 rows=3 loops=21761)
+                                       Index Cond: (ps_partkey = part.p_partkey)
+                                       Filter: ((ps_availqty)::double precision > (SubPlan 1))
+                                       Rows Removed by Filter: 1
+                                       Buffers: shared hit=2753502 read=312431 dirtied=776 written=45
+                                       SubPlan 1
+                                         ->  Aggregate  (cost=140.92..140.94 rows=1 width=4) (actual time=0.113..0.113 rows=1 loops=87044)
+                                               Buffers: shared hit=2693560 read=282463 dirtied=776 written=44
+                                               ->  Index Scan using lineitem_l_partkey_l_quantity_l_shipmode_idx on lineitem  (cost=0.00..140.92 rows=1 width=4) (actual time=0.070..0.111 rows=1 loops=87044)
+                                                     Index Cond: (l_partkey = partsupp.ps_partkey)
+                                                     Filter: ((l_shipdate >= '1995-01-01'::date) AND (l_shipdate < '1996-01-01'::date) AND (l_suppkey = partsupp.ps_suppkey))
+                                                     Rows Removed by Filter: 29
+                                                     Buffers: shared hit=2693560 read=282463 dirtied=776 written=44
+ Total runtime: 12122.396 ms
+(42 rows)
+
+COMMIT;
+COMMIT
